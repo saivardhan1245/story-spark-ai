@@ -108,7 +108,7 @@ const deletePost = catchAsync(async (req: Request, res: Response) => {
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
-    message: "Story deleted successfully!",
+    message: "Story removed successfully!",
     data: result,
   });
 });

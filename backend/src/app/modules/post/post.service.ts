@@ -11,9 +11,6 @@ import {
 import paginationHelper from "../../../utils/pagination_helper";
 import { postSearchFields } from "./post.constant";
 import { SortOrder } from "mongoose";
-import { Bookmark } from "../bookmark/bookmark.model";
-import { Comment } from "../comment/comment.model";
-import { Reaction } from "../reaction/reaction.model";
 
 const createPost = async (payload: IPostPayload, token: ITokenPayload) => {
   const { email, role } = token;
@@ -50,7 +47,9 @@ const getPosts = async (
   const { page, limit, skip, sortBy, orderBy } = paginationHelper(pagination);
   const { searchTerm, trendingTopic, sortFilter, genres, ...filterData } =
     filters;
-  const andCondition = [];
+  const andCondition: Record<string, unknown>[] = [
+    { isDeleted: { $ne: true } },
+  ];
 
   if (searchTerm) {
     andCondition.push({
@@ -69,9 +68,22 @@ const getPosts = async (
     });
   }
 
-  if (genres && genres.length > 0) {
+  const genreList = Array.isArray(genres)
+    ? genres
+    : typeof genres === "string"
+      ? genres.split(",").map((g) => g.trim()).filter(Boolean)
+      : [];
+
+  if (genreList.length > 0) {
     andCondition.push({
-      tag: { $in: genres },
+      $or: genreList.map((genre) => ({
+        tag: {
+          $regex: new RegExp(
+            `^${genre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            "i",
+          ),
+        },
+      })),
     });
   }
 
@@ -118,7 +130,7 @@ const getPosts = async (
 
 const getLatestPosts = async () => {
   try {
-    const res = await Post.find()
+    const res = await Post.find({ isDeleted: { $ne: true } })
       .sort({ createdAt: -1 })
       .limit(2)
       .populate("author", "name email createdAt")
@@ -138,7 +150,10 @@ const getLatestPosts = async () => {
 
 const getFeaturedPosts = async () => {
   try {
-    const res = await Post.find({ isFeaturedPost: true })
+    const res = await Post.find({
+      isFeaturedPost: true,
+      isDeleted: { $ne: true },
+    })
       .sort({ createdAt: -1, updatedBy: -1 })
       .limit(2)
       .populate("author", "name email createdAt")
@@ -158,8 +173,8 @@ const getFeaturedPosts = async () => {
 
 const doFeaturedPosts = async (postId: string) => {
   try {
-    const res = await Post.findByIdAndUpdate(
-      postId,
+    const res = await Post.findOneAndUpdate(
+      { _id: postId, isDeleted: { $ne: true } },
       { isFeaturedPost: true },
       { new: true }
     );
@@ -173,7 +188,7 @@ const doFeaturedPosts = async (postId: string) => {
 };
 
 const getSinglePost = async (id: string) => {
-  const postById = await Post.findOne({ _id: id })
+  const postById = await Post.findOne({ _id: id, isDeleted: { $ne: true } })
     .populate("author", "name email createdAt")
     .populate({
       path: "reactions",
@@ -187,7 +202,7 @@ const getSinglePost = async (id: string) => {
 };
 
 const getPostsByTag = async (tag: string, excludeId?: string) => {
-  const query: any = { tag };
+  const query: any = { tag, isDeleted: { $ne: true } };
   if (excludeId) {
     query._id = { $ne: excludeId };
   }
@@ -208,7 +223,7 @@ const toggleBookmark = async (postId: string, token: ITokenPayload) => {
   if (!user) {
     throw new ApiError(httpStatus.BAD_REQUEST, "User not found!");
   }
-  const post = await Post.findOne({ _id: postId });
+  const post = await Post.findOne({ _id: postId, isDeleted: { $ne: true } });
   if (!post) {
     throw new ApiError(httpStatus.BAD_REQUEST, "Post not found!");
   }
@@ -237,7 +252,10 @@ const deletePost = async (postId: string, token: ITokenPayload) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "User not found!");
   }
 
-  const post = await Post.findById(postId);
+  const post = await Post.findOne({
+    _id: postId,
+    isDeleted: { $ne: true },
+  });
   if (!post) {
     throw new ApiError(httpStatus.NOT_FOUND, "Post not found!");
   }
@@ -249,16 +267,10 @@ const deletePost = async (postId: string, token: ITokenPayload) => {
     );
   }
 
-  await Promise.all([
-    Comment.deleteMany({ postId: post._id }),
-    Reaction.deleteMany({ postId: post._id }),
-    Bookmark.deleteMany({ storyId: post._id }),
-    Post.deleteOne({ _id: post._id }),
-    User.updateOne(
-      { _id: user._id, postsCount: { $gt: 0 } },
-      { $inc: { postsCount: -1 } }
-    ),
-  ]);
+  post.isDeleted = true;
+  post.deletedAt = new Date();
+  post.deletedBy = user._id;
+  await post.save();
 
   return post;
 };
