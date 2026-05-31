@@ -206,11 +206,15 @@ const StoriesComponent = () => {
 
   const isOverLimit = textareaValue.length >= MAX_PROMPT_LENGTH;
   const isNearLimit = textareaValue.length >= MAX_PROMPT_LENGTH * WARN_THRESHOLD;
+  const isGenerateDisabled = loading || isOverLimit;
 
   useKeyboardShortcuts({
     onOpenHelp: () => setShowHelpModal(true),
     onCloseHelp: () => setShowHelpModal(false),
     onGenerate: () => {
+      if (loading || isOverLimit) {
+        return;
+      }
       if (inputRef.current) {
         const form = inputRef.current.closest("form");
         if (form) form.requestSubmit();
@@ -305,6 +309,7 @@ const StoriesComponent = () => {
         <button
           key={genre}
           type="button"
+          disabled={loading}
           onClick={() =>
             setSelectedGenre(selectedGenre === genre ? "" : genre)
           }
@@ -312,7 +317,7 @@ const StoriesComponent = () => {
             selectedGenre === genre
               ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/30"
               : "bg-white/10 text-gray-400 hover:bg-white/20 hover:text-gray-200"
-          }`}
+          } ${loading ? "cursor-not-allowed opacity-50" : ""}`}
         >
           {genre}
         </button>
@@ -327,12 +332,13 @@ const StoriesComponent = () => {
           <button
             key={length}
             type="button"
+            disabled={loading}
             onClick={() => setSelectedLength(length)}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-200 ${
               selectedLength === length
                 ? "bg-indigo-500 text-white shadow-lg shadow-indigo-500/30"
                 : "bg-white/10 text-gray-400 hover:bg-white/20 hover:text-gray-200"
-            }`}
+            } ${loading ? "cursor-not-allowed opacity-50" : ""}`}
           >
             {length.charAt(0).toUpperCase() + length.slice(1)}
           </button>
@@ -345,8 +351,11 @@ const StoriesComponent = () => {
           <button
             key="lang-selector-btn"
             type="button"
-            onClick={() => setIsLanguageDropdownOpen(!isLanguageDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1 bg-white/10 text-gray-300 border border-slate-700/50 rounded-full text-xs font-semibold hover:bg-white/20 transition-all duration-200 cursor-pointer"
+            disabled={loading}
+            onClick={() => !loading && setIsLanguageDropdownOpen(!isLanguageDropdownOpen)}
+            className={`flex items-center gap-2 px-3 py-1 bg-white/10 text-gray-300 border border-slate-700/50 rounded-full text-xs font-semibold hover:bg-white/20 transition-all duration-200 ${
+              loading ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+            }`}
           >
             <span>{LANGUAGES.find(l => l.name === selectedLanguage)?.name || "English"}</span>
             <span className="text-gray-400 text-[10px]">▼</span>
@@ -385,6 +394,8 @@ const StoriesComponent = () => {
     register("prompt").ref(el);
     inputRef.current = el;
   }}
+        disabled={loading}
+        aria-busy={loading}
         className={`w-full h-32 sm:h-40 resize-none border-none outline-none bg-transparent text-gray-300 focus:ring-0 text-lg leading-relaxed tracking-wide placeholder:italic placeholder:text-gray-500 pr-10 transition-colors duration-200 ${
           isOverLimit
             ? "ring-1 ring-red-500 rounded"
@@ -399,6 +410,9 @@ const StoriesComponent = () => {
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
+            if (loading || isOverLimit) {
+              return;
+            }
             const form = e.currentTarget.closest("form");
             if (form) form.requestSubmit();
           }
@@ -408,8 +422,13 @@ const StoriesComponent = () => {
       {textareaValue.length > 0 && (
         <button
           type="button"
+          disabled={loading}
           onClick={handleClearPrompt}
-          className="absolute right-2 top-2 text-gray-400 hover:text-red-500 transition-colors duration-200"
+          className={`absolute right-2 top-2 text-gray-400 transition-colors duration-200 ${
+            loading
+              ? "cursor-not-allowed opacity-50"
+              : "hover:text-red-500"
+          }`}
           aria-label="Clear prompt"
           title="Clear prompt"
         >
@@ -476,19 +495,29 @@ const StoriesComponent = () => {
     <div className="flex justify-end mt-2 w-full">
       <button
         type="submit"
-        disabled={loading || isOverLimit}
+        disabled={isGenerateDisabled}
         aria-busy={loading}
-        aria-disabled={loading || isOverLimit}
+        aria-disabled={isGenerateDisabled}
         className={`rounded-lg bg-gradient-to-r from-blue-400 to-indigo-500 text-gray-200 px-6 py-3 font-semibold ${
-          loading || isOverLimit
+          isGenerateDisabled
             ? "opacity-50 cursor-not-allowed"
             : "cursor-pointer hover:shadow-lg hover:shadow-indigo-500/50 hover:scale-105"
         } transition-all duration-300 transform flex items-center space-x-2 group`}
       >
-        <i className="fas fa-wand-magic-sparkles text-xl transition-transform duration-300 group-hover:animate-wiggle"></i>
-        {loading ? "Generating..." : "Generate"}
+        {loading ? (
+          <i className="fas fa-circle-notch text-xl animate-spin"></i>
+        ) : (
+          <i className="fas fa-wand-magic-sparkles text-xl transition-transform duration-300 group-hover:animate-wiggle"></i>
+        )}
+        <span>{loading ? "Generating story..." : "Generate"}</span>
       </button>
     </div>
+
+    {loading && (
+      <p className="text-sm text-indigo-300 mt-3 text-right" aria-live="polite">
+        Your story is being generated. You can cancel the request if it takes too long.
+      </p>
+    )}
   </form>
 </div>
             </div>
@@ -501,8 +530,11 @@ const StoriesComponent = () => {
   <div className="relative" ref={dropdownRef}>
     <button
       type="button"
-      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-      className="w-full p-3 bg-slate-800 text-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 flex items-center justify-between text-sm text-left transition-all duration-200"
+      disabled={loading}
+      onClick={() => !loading && setIsDropdownOpen(!isDropdownOpen)}
+      className={`w-full p-3 bg-slate-800 text-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 flex items-center justify-between text-sm text-left transition-all duration-200 ${
+        loading ? "cursor-not-allowed opacity-60" : ""
+      }`}
     >
       <span className="truncate pr-4">
         {selectedPrompt || "Select a prompt"}
