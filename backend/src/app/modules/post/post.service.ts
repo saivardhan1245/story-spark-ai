@@ -14,14 +14,12 @@ import paginationHelper from "../../../utils/pagination_helper";
 import { postSearchFields } from "./post.constant";
 import { SortOrder, Types } from "mongoose";
 import { GamificationService } from "../gamification/gamification.service";
+import { WritingStreakService } from "../gamification/writing_streak.service";
 
 const MAX_SEARCH_TERM_LENGTH = 100;
-const escapeRegex = (text: string) => text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-
 const escapeRegex = (text: string): string => {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 };
-const MAX_SEARCH_TERM_LENGTH = 100;
 
 interface ICursorPayload {
   value: string;
@@ -116,6 +114,7 @@ const createPost = async (payload: IPostPayload, token: ITokenPayload) => {
         user.postsCount += 1;
         await user.save();
         GamificationService.addXp(String(user._id), 50, "CREATED_POST").catch(console.error);
+        WritingStreakService.updateStreakAndUnlocks(String(user._id)).catch(console.error);
         if (user.postsCount === 1) {
           GamificationService.awardBadge(String(user._id), "First Story").catch(console.error);
         }
@@ -407,13 +406,9 @@ const toggleBookmark = async (postId: string, token: ITokenPayload) => {
     throw new ApiError(httpStatus.BAD_REQUEST, "User not found!");
   }
 
-  const postExists = await Post.exists({ _id: postId, isDeleted: { $ne: true } });
-  if (!postExists) {
-
   const post = await Post.findOne({ _id: postId, isDeleted: { $ne: true } });
 
   if (!post) {
-
     throw new ApiError(httpStatus.BAD_REQUEST, "Post not found!");
   }
 
@@ -488,6 +483,8 @@ const updatePost = async (
   post.updatedBy = user._id;
   await post.save();
 
+  WritingStreakService.updateStreakAndUnlocks(String(user._id)).catch(console.error);
+
   return post;
 };
 
@@ -552,6 +549,7 @@ const remixStory = async (postId: string, prompt: string, token: ITokenPayload) 
   if (res) {
     user.postsCount += 1;
     await user.save();
+    WritingStreakService.updateStreakAndUnlocks(String(user._id)).catch(console.error);
   }
 
   return res;
@@ -581,6 +579,7 @@ const translateStory = async (postId: string, language: string, token: ITokenPay
   if (res) {
     user.postsCount += 1;
     await user.save();
+    WritingStreakService.updateStreakAndUnlocks(String(user._id)).catch(console.error);
   }
 
   return res;
